@@ -42,8 +42,7 @@ SCHEDULE = 'USING CRON 0 2 * * * America/Los_Angeles'
 TIMESTAMP_INPUT_FORMAT = 'YYYY-MM-DD HH24' 
 AS 
 copy INTO raw_predictit(file_name, raw_value)
-FROM (
-	SELECT metadata$filename,t.$1
+FROM ( SELECT metadata$filename,t.$1
 	FROM @raw_predictit T
 	);
 
@@ -55,21 +54,23 @@ ALTER TASK PUBLIC.task_insert_raw_predictit RESUME;
 
 --
 -- create table for market data
-CREATE
-	OR replace TABLE stg_predictit_markets (
-	id INT
-	,predictit_name VARCHAR(200)
-	,predictit_short_name VARCHAR(100)
-	,predicit_url VARCHAR(500)
-	);
+CREATE OR replace TABLE stg_predictit_markets 
+(
+	id INT,
+    predictit_name VARCHAR(200),
+    predictit_short_name VARCHAR(100),
+    predicit_url VARCHAR(500)
+);
 
 -- Create task to insert into market data   
-CREATE
-	OR REPLACE TASK task_insert_stg_predictit_market WAREHOUSE = COMPUTE_WH TIMESTAMP_INPUT_FORMAT = 'YYYY-MM-DD HH24' AFTER task_insert_raw_predictit AS
+CREATE OR REPLACE TASK task_insert_stg_predictit_market 
+WAREHOUSE = COMPUTE_WH 
+TIMESTAMP_INPUT_FORMAT = 'YYYY-MM-DD HH24' 
+AFTER task_insert_raw_predictit 
+AS
 
 INSERT INTO stg_predictit_markets
-WITH raw_predictit AS (
-		SELECT DISTINCT cast(parse_json(markets_json.value) :id AS INT) AS id
+WITH raw_predictit AS (	SELECT DISTINCT cast(parse_json(markets_json.value) :id AS INT) AS id
 			,replace(parse_json(markets_json.value) :name, '"', '') AS predictit_name
 			,replace(parse_json(markets_json.value) :shortName, '"', '') AS predictit_short_name
 			,replace(parse_json(markets_json.value) :url, '"', '') AS predictit_url
@@ -89,6 +90,38 @@ ALTER TASK PUBLIC.task_insert_stg_predictit_market RESUME;
 
 ALTER TASK PUBLIC.task_insert_raw_predictit RESUME;
 
+
+-- create table for market data
+CREATE OR replace TABLE stg_predictit_contracts 
+(
+	predictit_id INT,
+    predictit_contract_id INT,
+    IMAGE VARCHAR(500),
+    end_date VARCHAR(200),
+    contract_name VARCHAR(200),
+    contract_status_name VARCHAR(100),
+    contract_short_name VARCHAR(100),
+    last_trade_price REAL,
+    best_buy_yes_cost REAL,
+    best_buy_no_cost REAL,
+    best_sell_yes_cost REAL,
+    best_sell_no_cost REAL,
+    last_close_price REAL
+    -- dateid VARCHAR(200)
+);
+
+ALTER TASK PUBLIC.task_insert_raw_predictit SUSPEND;
+ALTER TASK PUBLIC.task_insert_stg_predictit_market SUSPEND;
+
+-- Create task to insert into market data   
+CREATE OR REPLACE TASK task_insert_stg_predictit_contract 
+WAREHOUSE = COMPUTE_WH 
+TIMESTAMP_INPUT_FORMAT = 'YYYY-MM-DD HH24' 
+AFTER task_insert_stg_predictit_market
+AS
+
+INSERT INTO stg_predictit_contracts
+
 -- contract query  
 SELECT parse_json(market_values.value) :id AS predictit_id
 	,parse_json(contracts.value) :id AS predictit_contract_id
@@ -103,9 +136,21 @@ SELECT parse_json(market_values.value) :id AS predictit_id
 	,parse_json(contracts.value) :bestSellYesCost AS best_sell_yes_cost
 	,parse_json(contracts.value) :bestSellNoCost AS best_sell_no_cost
 	,parse_json(contracts.value) :lastClosePrice AS last_close_price
-	,cast(replace(split(split(file_name, '_') [1], '.') [0], '"', '') AS INT) AS dateid
-FROM tbl_raw_predictit
-	,lateral flatten(parse_json(raw_value) :markets) market_values
-	,lateral flatten(parse_json(market_values.value) :contracts) contracts
-ORDER BY 2
-	,1
+    -- cast(replace(split(split(file_name, '_') [1], '.') [0], '"', '') AS INT) AS dateid
+FROM raw.Public.TBL_RAW_PREDICTIT, lateral flatten(parse_json(raw_value) :markets) market_values,
+    lateral flatten(parse_json(market_values.value) :contracts) contracts
+ORDER BY 2,1
+
+
+ALTER TASK PUBLIC.task_insert_raw_predictit RESUME;
+ALTER TASK PUBLIC.task_insert_stg_predictit_market RESUME;
+ALTER TASK PUBLIC.task_insert_stg_predictit_contract RESUME;
+
+SELECT tbl_raw_predictit.*
+FROM raw.public.tbl_raw_predictit
+
+select *
+from raw.public.stg_predictit_markets
+
+select *
+from raw.public.stg_predictit_contracts

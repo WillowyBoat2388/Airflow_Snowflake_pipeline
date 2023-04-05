@@ -36,7 +36,7 @@ with DAG(
     "raw_predictit",
     default_args=default_args,
     description="",
-    schedule_interval = datetime.timedelta(days=1),
+    schedule_interval = datetime.timedelta(days=3),
     start_date=start_date,
     catchup=False,
     tags=["sdg"]
